@@ -1,0 +1,11 @@
+[package]
+name = "pf2-font"
+version = "0.1.0"
+authors = ["sasuseso <sinai471530@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+memmap = "0.6.2"
+byteorder = "1.3.4"
