@@ -1,159 +1,90 @@
 extern crate memmap;
 extern crate byteorder;
+use byteorder::{BigEndian, ReadBytesExt};
+use std::io::Cursor;
 use std::fs::File;
 use std::env;
-use std::ffi::CString;
+use std::os::raw::c_char;
+use std::ffi::CStr;
+use core::marker::PhantomData;
+use std::str::from_utf8;
 
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug)]
 struct Section {
     name: [u8; 4],
-    length: u32,
+    length: [u8; 4],
 }
 
 impl Section {
-    fn get_name(&self) -> String {
-        self.name.to_string()
+    fn get_name(&self) -> &str {
+        from_utf8(&(self.name[..])).unwrap()
     }
 
     fn get_length(&self) -> usize {
-        self.length as usize
+        Cursor::new(self.length).read_u32::<BigEndian>().unwrap() as usize
     }
 }
 
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct FileSection {
-    header: Section,
-    string: [u8; 4]
-}
-
-impl FileSection {
-    fn verify_string(&self) -> bool {
-        self.string == "PFF2".as_bytes()
-    }
-}
-
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct NameSection {
-    header: Section,
-    font_name: CString,
-}
-
-impl NameSection {
-    fn get_font_name(&self) -> String {
-        self.font_name.to_str().unwrap().to_string()
-    }
-}
-
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct FamilyNameSection {
-    header: Section,
-    family_name: CString,
-}
-
-impl FontWeightSection {
-    fn get_family_name(&self) -> String {
-        self.family_name.to_str().unwrap().to_string()
-    }
-}
-
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct FontWeightSection {
-    header: Section,
-    weight: CString,
-}
-
-impl FontWeightSection {
-    fn get_weight(&self) -> String {
-        self.weight.to_str().unwrap().to_string()
-    }
-}
-
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct FontSlantSection {
-    header: Section,
-    slant: CString,
-}
-
-impl FontSlantSection {
-    fn get_slant(&self) -> String {
-        self.slant.to_str().unwrap().to_string()
-    }
-}
-
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct FontPointSizeSection {
-    header: Section,
+#[derive(Clone, Debug, Default)]
+struct Font {
+    name: String,
+    family: String,
+    weight: String,
     point_size: u16,
-}
-
-impl FontPointSizeSection {
-    fn get_point_size(&self) -> u16 {
-        self.point_size
-    }
-}
-
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct MaxFontWidthSection {
-    header: Section,
-    width: u16,
-}
-
-impl MaxFontWidthSection {
-    fn get_width(&self) -> u16 {
-        self.width
-    }
-}
-
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct MaxFontHeightSection {
-    header: Section,
-    height: u16,
-}
-
-impl MaxFontHeightSection {
-    fn get_height(&self) -> u16 {
-        self.height
-    }
-}
-
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct FontAscentSection {
-    header: Section,
+    max_width: u16,
+    max_height: u16,
     ascent: u16,
-}
-
-impl FontAscentSection {
-    fn get_ascent(&self) -> u16 {
-        self.ascent
-    }
-}
-
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Default)]
-struct FontDescentSection {
-    header: Section,
     descent: u16,
 }
 
-impl FontDescentSection {
-    fn get_descent(&self) -> u16 {
-        self.descent
+impl Font {
+    fn new(head_ptr: *mut Section) -> Font {
+        let font_info = Default::default();
+        let mut eof = false;
+        let mut ptr = head_ptr;
+        //unsafe {
+            //println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length());
+            //let addr = ptr as usize + (*ptr).get_length() as usize + 8;
+            //println!("{:#x}", addr);
+            //ptr = addr as *mut _;
+            //println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length());
+        //}
+        while !eof {
+            match unsafe { (*ptr).get_name() } {
+                "FILE" => {
+                    unsafe {
+                        println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length());
+                        let s = from_utf8(&(*((ptr as usize + 8) as *const [u8; 4]))[..]).unwrap();
+                        if s == "PFF2" {
+                            println!("Signiture OK!");
+                        }
+                    }
+                },
+                "NAME" => { unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); } },
+                "FAMI" => { unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); } },
+                "WEIG" => { unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); } },
+                "SLAN" => { unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); } },
+                "PTSZ" => { unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); } },
+                "MAXW" => { unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); } },
+                "MAXH" => { unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); } },
+                "ASCE" => { unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); } },
+                "DESC" => { unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); } },
+                "CHIX" => {
+                    eof = true;
+                    unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); }
+                    break
+                },
+                _ => break,
+            }
+
+            let addr = ptr as usize + unsafe { (*ptr).get_length() } as usize + 8;
+            ptr = addr as *mut _;
+        }
+        font_info
     }
 }
 
-//#[repr(C, packed)]
-//#[derive(Copy, Clone, Debug, Default)]
-//struct 
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -167,6 +98,8 @@ fn main() {
         .map(&File::open(&args[1]).unwrap())
         .unwrap()
     };
+
+    let section = Font::new(file.as_ptr() as *mut Section);
 
     println!("{:?}", file);
 }
