@@ -46,13 +46,6 @@ impl Font {
         let mut font_info: Self = Default::default();
         let mut eof = false;
         let mut ptr = head_ptr;
-        //unsafe {
-            //println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length());
-            //let addr = ptr as usize + (*ptr).get_length() as usize + 8;
-            //println!("{:#x}", addr);
-            //ptr = addr as *mut _;
-            //println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length());
-        //}
         while !eof {
             match unsafe { (*ptr).get_name() } {
                 "FILE" => {
@@ -139,34 +132,40 @@ impl Font {
                     eof = true;
 
                     //println!("{:?}", chix.chix[0]);
-                    unsafe {
-                        println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length());
+                    unsafe { println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length()); }
 
-                        let chix = *((ptr as usize + 8 + (9 * 0x41)) as *const ChixEntry);
-                        println!("code_point: {:#x}\noffset: {:#x}\nflags: {:#x}",
-                                 chix.get_code_point(),
-                                 chix.get_offset(),
-                                 chix.get_storage_flags());
-                        let data = (chix.get_offset() + head_ptr as usize) as *const CharData;
+                    //let chix = *((ptr as usize + 8 + (9 * 0x41)) as *const ChixEntry);
+                    let chix_entries: &[ChixEntry] = unsafe {
+                        slice::from_raw_parts((ptr as usize + 8) as *const ChixEntry,
+                                (*ptr).get_length() / 9)
+                    };
+                    let chix = chix_entries[0x41];
+                    println!("{}", chix.get_code_point() == chix_entries[0x41].get_code_point());
+                    println!("code_point: {:#x}\noffset: {:#x}\nflags: {:#x}",
+                             chix.get_code_point(),
+                             chix.get_offset(),
+                             chix.get_storage_flags());
+                    let data = (chix.get_offset() + head_ptr as usize) as *const CharData;
+                    unsafe {
                         println!("width: {:#x}, height: {:#x}\nx_off: {}, y_off: {}\ndev_width: {}\nbitmap: [len: {}] {:?}",
                                  (*data).get_width(), (*data).get_height(),
                                  (*data).get_x_offset(), (*data).get_y_offset(),
                                  (*data).get_dev_width(), (*data).get_bitmap().len(),
                                  (*data).get_bitmap());
-                        let bitmap = BitVec::from_bytes((*data).get_bitmap());
-
-                        println!("\n");
-                        for (i, b) in bitmap.iter().enumerate() {
-                            print!("{}", match b {
-                                true => "#",
-                                false => " "
-                            });
-                            if (i + 1) % (*data).get_width() as usize == 0 {
-                                println!()
-                            }
-                        }
-                        println!("\n");
                     }
+                    let bitmap = BitVec::from_bytes(unsafe { (*data).get_bitmap() });
+
+                    println!("------------------------------");
+                    for (i, b) in bitmap.iter().enumerate() {
+                        print!("{}", match b {
+                            true => "#",
+                            false => " "
+                        });
+                        if (i + 1) % unsafe { (*data).get_width() } as usize == 0 {
+                            println!()
+                        }
+                    }
+                    println!("\n------------------------------");
                     break
                 },
                 _ => break,
