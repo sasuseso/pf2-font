@@ -2,29 +2,29 @@ extern crate memmap;
 extern crate byteorder;
 extern crate bit_vec;
 use byteorder::{ByteOrder, BigEndian};
-use std::io::Cursor;
+//use std::io::Cursor;
 use std::fs::File;
 use std::env;
 use std::os::raw::c_char;
 use std::ffi::CStr;
-use core::marker::PhantomData;
+//use core::marker::PhantomData;
 use std::str::from_utf8;
+use std::slice;
 use bit_vec::BitVec;
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug)]
 struct Section {
-    name: [u8; 4],
-    length: [u8; 4],
+    data: [u8; 8]
 }
 
 impl Section {
     fn get_name(&self) -> &str {
-        from_utf8(&(self.name[..])).unwrap()
+        from_utf8(&(self.data[..4])).unwrap()
     }
 
     fn get_length(&self) -> usize {
-        BigEndian::read_u32(&(self.length)) as usize
+        BigEndian::read_u32(&(self.data)[4..]) as usize
     }
 }
 
@@ -137,51 +137,35 @@ impl Font {
                 },
                 "CHIX" => {
                     eof = true;
+
+                    //println!("{:?}", chix.chix[0]);
                     unsafe {
                         println!("{}, {:#x}", (*ptr).get_name(), (*ptr).get_length());
 
-                        let chix = *((ptr as usize + 8) as *const ChixEntry);
-                        println!("{:#x}, {:#x}, {:#x}",
+                        let chix = *((ptr as usize + 8 + (9 * 0x41)) as *const ChixEntry);
+                        println!("code_point: {:#x}\noffset: {:#x}\nflags: {:#x}",
                                  chix.get_code_point(),
-                                 chix.get_storage_flags(),
-                                 chix.get_offset()
-                                 );
+                                 chix.get_offset(),
+                                 chix.get_storage_flags());
+                        let data = (chix.get_offset() + head_ptr as usize) as *const CharData;
+                        println!("width: {:#x}, height: {:#x}\nx_off: {}, y_off: {}\ndev_width: {}\nbitmap: [len: {}] {:?}",
+                                 (*data).get_width(), (*data).get_height(),
+                                 (*data).get_x_offset(), (*data).get_y_offset(),
+                                 (*data).get_dev_width(), (*data).get_bitmap().len(),
+                                 (*data).get_bitmap());
+                        let bitmap = BitVec::from_bytes((*data).get_bitmap());
 
-                        let char_addr: usize = head_ptr as usize + chix.get_offset() as usize;
-                        let char_data = *(char_addr as *const CharData);
-                        println!("{:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:?}",
-                                 char_data.get_width(),
-                                 char_data.get_height(),
-                                 char_data.get_x_offset(),
-                                 char_data.get_y_offset(),
-                                 char_data.get_dev_width(),
-                                 char_addr,
-                                 char_data.get_bitmap()
-                                 );
-
-                        let s = char_addr as *const u16;
-                        println!("{:#x}", *s);
-
-                        let bitmap = BitVec::from_bytes(char_data.get_bitmap());
-                        println!("{:?}", bitmap);
-
-                        for (i, d) in bitmap.iter().enumerate() {
-                            if i != 0 && i % 16 == 0 {
-                                println!();
-                            }
-
-                            print!("{}", match d {
+                        println!("\n");
+                        for (i, b) in bitmap.iter().enumerate() {
+                            print!("{}", match b {
                                 true => "#",
-                                false => " ",
+                                false => " "
                             });
+                            if (i + 1) % (*data).get_width() as usize == 0 {
+                                println!()
+                            }
                         }
-
-                        //let n = BigEndian::read_u32(&(*((ptr as usize + 8) as *const [u8; 4]))[..]);
-                        //println!("{:#x}", n);
-                        //let n = *((ptr as usize + 12) as *const u8);
-                        //println!("{:#x}", n);
-                        //let n = BigEndian::read_u32(&(*((ptr as usize + 13) as *const [u8; 4]))[..]);
-                        //println!("{:#x}", n);
+                        println!("\n");
                     }
                     break
                 },
@@ -196,30 +180,27 @@ impl Font {
     }
 }
 
-
-#[repr(C)]
+#[repr(packed, C)]
 #[derive(Copy, Clone, Debug, Default)]
 struct ChixEntry {
-    code_point: [u8; 4],
-    storage_flags: u8,
-    offset: [u8; 4],
+    entry: [u8; 4 + 1 + 4]
 }
 
 impl ChixEntry {
     fn get_code_point(&self) -> u32 {
-        BigEndian::read_u32(&(self.code_point)[..])
+        BigEndian::read_u32(&(self.entry)[..4])
     }
 
     fn get_storage_flags(&self) -> u8 {
-        self.storage_flags
+        self.entry[4]
     }
 
-    fn get_offset(&self) -> u32 {
-        BigEndian::read_u32(&(self.offset)[..])
+    fn get_offset(&self) -> usize {
+        BigEndian::read_u32(&(self.entry)[5..]) as usize
     }
 }
 
-#[repr(C)]
+#[repr(packed, C)]
 #[derive(Debug, Clone, Copy)]
 struct CharData {
     width: [u8; 2],
@@ -227,7 +208,6 @@ struct CharData {
     x_offset: [u8; 2],
     y_offset: [u8; 2],
     dev_width: [u8; 2],
-    bitmap_data: u8
 }
 
 impl CharData {
@@ -239,22 +219,22 @@ impl CharData {
         BigEndian::read_u16(&(self.height))
     }
 
-    fn get_x_offset(&self) -> u16 {
-        BigEndian::read_u16(&(self.x_offset))
+    fn get_x_offset(&self) -> i16 {
+        BigEndian::read_i16(&(self.x_offset))
     }
 
-    fn get_y_offset(&self) -> u16 {
-        BigEndian::read_u16(&(self.y_offset))
+    fn get_y_offset(&self) -> i16 {
+        BigEndian::read_i16(&(self.y_offset))
     }
 
-    fn get_dev_width(&self) -> u16 {
-        BigEndian::read_u16(&(self.dev_width))
+    fn get_dev_width(&self) -> i16 {
+        BigEndian::read_i16(&(self.dev_width))
     }
 
     fn get_bitmap(&self) -> &[u8] {
         unsafe {
-            std::slice::from_raw_parts(&(self.bitmap_data) as *const u8,
-                ((self.get_width() * self.get_height() + 7) / 8) as usize)
+            slice::from_raw_parts((self as *const Self as usize + 10) as *const u8,
+                                  ((self.get_width() * self.get_height() + 7) / 8) as usize)
         }
     }
 }
@@ -274,4 +254,5 @@ fn main() {
     let section = Font::new(file.as_ptr() as *mut Section);
 
     println!("{:?}", file);
+    println!("{:#b}", 1 << 7);
 }
